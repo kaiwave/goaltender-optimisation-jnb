@@ -1,0 +1,22 @@
+# main.pdf (remove once complete)
+main.pdf
+
+# Virtual Environments
+.venv/
+env/
+venv/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Checkpoints & Notebook Artifacts
+.ipynb_checkpoints/
+*-checkpoint.ipynb
+
+# Output Cache
+.vscode/
+.DS_Store
+
+main_files/
