@@ -20,7 +20,7 @@ T_REACT: float = 0.2
 # STATIC GEOMETRY AND PROJECTION
 def get_geometry(x_p: float, y_p: float) -> tuple[float, float]:
   # Calc theta and distance from the point to the net
-  theta = np.arctan2(y_p, x_p)
+  theta = np.arctan2(x_p, y_p)
   distance_Ds = np.sqrt(x_p**2 + y_p**2) 
 
   return theta, distance_Ds
