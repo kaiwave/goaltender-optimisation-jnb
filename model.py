@@ -41,15 +41,8 @@ def get_goalie_vertices(d_g: float, theta: float) -> np.ndarray:
   y2 = (d_g * np.cos(theta)) + ((W_GOALIE / 2) * -1 * np.sin(theta))
   v2 = np.array([x2, y2, 0])
 
-  x3 = (d_g * np.sin(theta)) - ((W_GOALIE / 2) * np.cos(theta))
-  y3 = (d_g * np.cos(theta)) - ((W_GOALIE / 2) * -1 * np.sin(theta))
-  z3 = H_GOALIE
-  v3 = np.array([x3, y3, z3])
-
-  x4 = (d_g * np.sin(theta)) + ((W_GOALIE / 2) * np.cos(theta))
-  y4 = (d_g * np.cos(theta)) + ((W_GOALIE / 2) * -1 * np.sin(theta))
-  z4 = H_GOALIE
-  v4 = np.array([x4, y4, z4])
+  v3 = np.array([x1, y1, H_GOALIE])
+  v4 = np.array([x2, y2, H_GOALIE])
 
   goalie_vertices = np.array([v1, v2, v3, v4])
   return goalie_vertices
