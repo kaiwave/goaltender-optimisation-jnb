@@ -180,7 +180,7 @@ def solve_dg_static(
 ) -> float:
   
   # Solve for the optimal goalie distance d_g that minimizes the expected exposed area
-  theta_set = get_geometry(*p0)[0]
+  theta_set = get_geometry(p0[0], p0[1])[0]
 
   def obj(d_g: float) -> float:
     areas = []
@@ -197,3 +197,13 @@ def solve_dg_static(
 # ---------------------------------------
 # STOCHASTIC STUFF - DYNAMIC MODEL
 # ---------------------------------------
+def calc_pass_recovery(
+    p1: Tuple[float, float],
+    p2: Tuple[float, float],
+    d_g: float,
+    v_pass: float = V_PASS,
+    v_slide: float = V_SLIDE,
+    t_react: float = T_REACT
+) -> float:
+
+  
