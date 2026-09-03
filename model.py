@@ -1,10 +1,11 @@
 from typing import Dict, Tuple, List
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import root_scalar
+from scipy.optimize import minimize_scalar
 
+# ---------------------------------------
 # CONSTANTS, CONSTRAINTS & PARAMETERS
-# Define constraints and parameters which will be used throughout the model.
+# ---------------------------------------
 # Net and crease dimensions in metres
 W_NET: float = 1.83
 H_NET: float = 1.22
@@ -19,25 +20,38 @@ V_PASS: float = 25
 V_SLIDE: float = 3.5
 T_REACT: float = 0.2
 
-# Stochastic Spatial Dispersion (Standard Deviations in meters)
+# Stochastic Parameters (Standard Deviations in meters)
 SIGMA_X_DEFAULT: float = 0.40  # Lateral stickhandling release variance
 SIGMA_Y_DEFAULT: float = 0.30  # Longitudinal stride release variance
+N_SAMPLES: int = 1000  # Number of samples for stochastic simulation
 
+# ---------------------------------------
 # CORE ENGINE - GEOMETRY AND PROJECTION
-def get_geometry(x_p: float, y_p: float) -> tuple[float, float]:
+# ---------------------------------------
+def get_geometry(
+    x_p: float, 
+    y_p: float
+) -> tuple[float, float]:
   # Calc theta and distance from the point to the net
   theta = np.arctan2(x_p, y_p)
   distance_Ds = np.sqrt(x_p**2 + y_p**2) 
 
   return theta, distance_Ds
 
-def get_net_apparent(theta: float) -> float:
+def get_net_apparent(
+    theta: float
+) -> float:
+  
   # Calc apparent area of the net from the angle theta
   apparent_area = W_NET * H_NET * np.cos(theta)
 
   return apparent_area
 
-def get_goalie_vertices(d_g: float, theta: float) -> np.ndarray:
+def get_goalie_vertices(
+    d_g: float, 
+    theta: float
+) -> np.ndarray:
+  
   # Calc apparent width and height of the goalie from the angle theta
   dg_sin_theta = d_g * np.sin(theta)
   dg_cos_theta = d_g * np.cos(theta)
@@ -59,9 +73,13 @@ def get_goalie_vertices(d_g: float, theta: float) -> np.ndarray:
   goalie_vertices = np.array([v1, v2, v3, v4])
   return goalie_vertices
 
-def puck_persp_proj(goalie_vertices: np.ndarray, x_p: float, y_p: float) -> np.ndarray:
+def puck_persp_proj(
+    goalie_vertices: np.ndarray, 
+    x_p: float, 
+    y_p: float
+) -> np.ndarray:
+  
   # Project the goalie vertices onto the goal plane
-
   x_v = goalie_vertices[:, 0]
   y_v = goalie_vertices[:, 1]
   z_v = goalie_vertices[:, 2] # Take goalie vertices since they are already sorted
@@ -74,7 +92,13 @@ def puck_persp_proj(goalie_vertices: np.ndarray, x_p: float, y_p: float) -> np.n
 
   return np.column_stack((x_proj, z_proj)) # Returns a 2D array of size (4, 2) with the projected coordinates
 
-def exposed_area_eff(x_p: float, y_p: float, d_g: float, theta: float = None) -> Dict[str, float]:
+def exposed_area_eff(
+    x_p: float, 
+    y_p: float, 
+    d_g: float, 
+    theta: float = None
+) -> tuple[float, float, float]:
+  
   # Compute terms
   shot_theta = get_geometry(x_p, y_p)[0]
   if theta is None:
@@ -97,17 +121,79 @@ def exposed_area_eff(x_p: float, y_p: float, d_g: float, theta: float = None) ->
   x_covered = max(0.0, min(x_proj_max, x_net_max) - max(x_proj_min, x_net_min))
   z_covered = max(0.0, min(z_proj_max, z_net_max) - max(z_proj_min, z_net_min))
 
-  covered_area = x_covered * z_covered
-  exposed_area = max(0.0, apparent_area - covered_area)
+  covered_area = x_covered * z_covered # Calculate the area of the net that is covered by the goalie
+  exposed_area = max(0.0, apparent_area - covered_area) # Calculate the area of the net that is exposed to the shot
   if apparent_area > 1e-6:
     occlusion_ratio = covered_area / apparent_area
   else:
     occlusion_ratio = 1.0
-  occlusion_ratio = float(np.clip(occlusion_ratio, 0.0, 1.0))
+  occlusion_ratio = float(np.clip(occlusion_ratio, 0.0, 1.0)) # Get the occlusion ratio, ensuring it is between 0 and 1
 
-  exposed_metrics = {
-    "exposed_area": float(exposed_area),
-    "covered_area": float(covered_area),
-    "occlusion_ratio": occlusion_ratio,
-  }
-  return exposed_metrics
+  return exposed_area, covered_area, occlusion_ratio
+
+# ---------------------------------------
+# STOCHASTIC STUFF - STATIC MODEL
+# ---------------------------------------
+def sample_release_neighbourhood(
+    p0: Tuple[float, float], 
+    sigma_x: float = SIGMA_X_DEFAULT, 
+    sigma_y: float = SIGMA_Y_DEFAULT,
+    n_samples: int = N_SAMPLES
+) -> np.ndarray:
+
+  # Sample a neighbourhood of release points around the original point p0
+  sample_matrix = np.random.normal(loc=p0, scale=[sigma_x, sigma_y], size=(n_samples, 2))
+
+  return sample_matrix
+
+def expected_exposed_area_eff(
+    p0: Tuple[float, float], 
+    d_g: float, 
+    samples: np.ndarray = None,
+) -> Tuple[float, float, float]:
+  
+  # Evaluate expected exposed area and occlusion ratio over the neighbourhood of release points
+  if samples is None:
+    samples = sample_release_neighbourhood(p0)
+
+  covered_areas = []  
+  exposed_areas = []
+  occlusion_ratios = []
+
+  for sample in samples:
+    x_p, y_p = sample
+    exposed_area, covered_area, occlusion_ratio = exposed_area_eff(x_p, y_p, d_g)
+    exposed_areas.append(exposed_area)
+    covered_areas.append(covered_area)
+    occlusion_ratios.append(occlusion_ratio)
+
+  expected_exposed_area = np.mean(exposed_areas)
+  expected_covered_area = np.mean(covered_areas)  
+  expected_occlusion_ratio = np.mean(occlusion_ratios)
+
+  return expected_exposed_area, expected_covered_area, expected_occlusion_ratio
+
+def solve_dg_static(
+    p0: Tuple[float, float],
+    d_bounds: Tuple[float, float] = (0.0, R_CREASE),
+    samples: np.ndarray = None
+) -> float:
+  
+  # Solve for the optimal goalie distance d_g that minimizes the expected exposed area
+  theta_set = get_geometry(*p0)[0]
+
+  def obj(d_g: float) -> float:
+    areas = []
+    for sample in samples:
+      x_p, y_p = sample
+      exposed_area, _, _ = exposed_area_eff(x_p, y_p, d_g, theta_set)
+      areas.append(exposed_area)
+    return float(np.mean(areas))
+
+  result = minimize_scalar(obj, bounds=d_bounds, method='bounded')
+
+  return float(result.x)
+
+# ---------------------------------------
+# STOCHASTIC STUFF - DYNAMIC MODEL
+# ---------------------------------------
