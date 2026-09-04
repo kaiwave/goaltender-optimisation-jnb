@@ -267,7 +267,7 @@ def solve_dg_dynamic(
   if calc_recovery_risk(p1, p2_0, upper_bound, samples) <= RISK_THRESHOLD:
     return upper_bound
 
-  for _ in range(50): # Bisecting to find the optimal d_g
+  for _ in range(40): # Bisecting to find the optimal d_g
     middle_bound = (lower_bound + upper_bound) / 2.0
     risk = calc_recovery_risk(p1, p2_0, middle_bound, samples)
 
@@ -279,5 +279,8 @@ def solve_dg_dynamic(
   return float(lower_bound)
 
 # ---------------------------------------
-# VISUALIZATION
+# VISUALIZATION - STATIC MODEL
 # ---------------------------------------
+def plot_exposure_contour():
+  
+  pass
