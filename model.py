@@ -237,7 +237,7 @@ def calc_recovery_risk(
 
   late_count = 0
   for pt in samples:
-    delta_t, _, _, _ = calc_pass_recovery(p1, (pt[0], pt[1]), d_g)
+    _, _, delta_t, _ = calc_pass_recovery(p1, (pt[0], pt[1]), d_g)
     if delta_t > 0.0:
       late_count += 1
 
@@ -248,7 +248,36 @@ def calc_recovery_risk(
 def solve_dg_dynamic(
     p1: Tuple[float, float], 
     p2_0: Tuple[float, float], 
-    samples: np.ndarray = None
+    samples: np.ndarray = None,
 ) -> float:
+  
+  # Solve for the optimal goalie distance d_g that minimizes the recovery risk
+  if samples is None:
+    samples = sample_release_neighbourhood(p2_0)
 
-  pass
+  if len(samples) == 0:
+    return R_CREASE
+
+  if calc_recovery_risk(p1, p2_0, 0.0, samples) > RISK_THRESHOLD:
+    return 0.0
+
+  lower_bound = 0.0
+  upper_bound = R_CREASE
+
+  if calc_recovery_risk(p1, p2_0, upper_bound, samples) <= RISK_THRESHOLD:
+    return upper_bound
+
+  for _ in range(50): # Bisecting to find the optimal d_g
+    middle_bound = (lower_bound + upper_bound) / 2.0
+    risk = calc_recovery_risk(p1, p2_0, middle_bound, samples)
+
+    if risk <= RISK_THRESHOLD:
+      lower_bound = middle_bound
+    else:
+      upper_bound = middle_bound
+
+  return float(lower_bound)
+
+# ---------------------------------------
+# VISUALIZATION
+# ---------------------------------------
