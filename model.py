@@ -1,7 +1,7 @@
-from typing import Dict, Tuple, List
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize_scalar
+from typing import Tuple
 
 # ---------------------------------------
 # CONSTANTS, CONSTRAINTS & PARAMETERS
@@ -24,6 +24,7 @@ T_REACT: float = 0.2
 SIGMA_X_DEFAULT: float = 0.40  # Lateral stickhandling release variance
 SIGMA_Y_DEFAULT: float = 0.30  # Longitudinal stride release variance
 N_SAMPLES: int = 1000  # Number of samples for stochastic simulation
+RISK_THRESHOLD: float = 0.05  # Threshold for acceptable recovery risk
 
 # ---------------------------------------
 # CORE ENGINE - GEOMETRY AND PROJECTION
@@ -201,9 +202,53 @@ def calc_pass_recovery(
     p1: Tuple[float, float],
     p2: Tuple[float, float],
     d_g: float,
-    v_pass: float = V_PASS,
-    v_slide: float = V_SLIDE,
-    t_react: float = T_REACT
+) -> Tuple[float, float, float, float]:
+
+  # Calculate the time it takes for the puck to travel from p1 to p2
+  dist_pass = float(np.linalg.norm(np.array(p2) - np.array(p1)))
+  t_pass = float(dist_pass / V_PASS)
+
+  # Calculate the time it takes for the goalie to slide to the new position
+  theta_1 = get_geometry(p1[0], p1[1])[0]
+  theta_2 = get_geometry(p2[0], p2[1])[0]
+  delta_theta = np.abs(theta_2 - theta_1)
+
+  delta_s_g = 2.0 * d_g * np.sin(delta_theta / 2.0)  # Arc length for the goalie to slide
+  t_slide = float(delta_s_g / V_SLIDE + T_REACT)
+
+  # Calculate the time difference between the pass and the goalie's recovery
+  delta_t = float(max(0.0, t_pass - t_slide))
+
+  return t_pass, t_slide, delta_t, dist_pass
+
+def calc_recovery_risk(
+    p1: Tuple[float, float],
+    p2_0: Tuple[float, float],
+    d_g: float,
+    samples: np.ndarray = None,
+) -> float:
+ 
+  # Calculate the probability of recovery risk
+  if samples is None:
+    samples = sample_release_neighbourhood(p2_0)
+
+  if len(samples) == 0:
+    return 0.0
+
+  late_count = 0
+  for pt in samples:
+    delta_t, _, _, _ = calc_pass_recovery(p1, (pt[0], pt[1]), d_g)
+    if delta_t > 0.0:
+      late_count += 1
+
+  risk = float(np.clip((late_count / len(samples)), 0.0, 1.0))
+
+  return risk
+
+def solve_dg_dynamic(
+    p1: Tuple[float, float], 
+    p2_0: Tuple[float, float], 
+    samples: np.ndarray = None
 ) -> float:
 
-  
+  pass
