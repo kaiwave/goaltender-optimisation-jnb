@@ -108,10 +108,22 @@ def exposed_area_eff(
     goalie_theta = shot_theta
   else:
     goalie_theta = theta
+
+  apparent_area = get_net_apparent(shot_theta)
+
+  # 1. Get the actual rotated 3D/2D stance vertices
+  vertices = get_goalie_vertices(d_g, goalie_theta)
+
+  # 2. Find the rearmost edge of the goalie's stance along y
+  max_y_vertex = np.max(vertices[:, 1])
+
+  # 3. Guard: If puck is anywhere level with or behind ANY part of the goalie
+  if (y_p <= max_y_vertex + 0.05) or (np.hypot(x_p, y_p) <= d_g):
+    return float(apparent_area), 0.0, 0.0
+  
   vertices = get_goalie_vertices(d_g, goalie_theta)
   apparent_area = get_net_apparent(shot_theta)
   proj = puck_persp_proj(vertices, x_p, y_p)  # Accounting for differences of the shot angle and goalie angle
-
 
   # Projected bounding intervals
   x_proj_min, x_proj_max = np.min(proj[:, 0]), np.max(proj[:, 0])
