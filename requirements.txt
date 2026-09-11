@@ -3,3 +3,4 @@ scipy>=1.10.0
 matplotlib>=3.7.0
 ipykernel>=6.20.0
 nbconvert>=7.0.0
+shapely>=2.1.2

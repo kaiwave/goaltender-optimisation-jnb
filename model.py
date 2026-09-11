@@ -4,6 +4,8 @@ from matplotlib.path import Path
 from matplotlib.patches import Polygon
 from scipy.optimize import minimize_scalar
 from typing import Tuple
+from shapely.geometry import Polygon as ShapelyPolygon
+from shapely.geometry import box
 
 # ---------------------------------------
 # CONSTANTS, CONSTRAINTS & PARAMETERS
@@ -96,9 +98,9 @@ def puck_persp_proj(
   return np.column_stack((x_proj, z_proj)) # Returns a 2D array of size (4, 2) with the projected coordinates
 
 def exposed_area_eff(
-    x_p: float, 
-    y_p: float, 
-    d_g: float, 
+    x_p: float,
+    y_p: float,
+    d_g: float,
     theta: float = None
 ) -> tuple[float, float, float]:
   
@@ -120,31 +122,29 @@ def exposed_area_eff(
   # 3. Guard: If puck is anywhere level with or behind ANY part of the goalie
   if (y_p <= max_y_vertex + 0.05) or (np.hypot(x_p, y_p) <= d_g):
     return float(apparent_area), 0.0, 0.0
-  
-  vertices = get_goalie_vertices(d_g, goalie_theta)
-  apparent_area = get_net_apparent(shot_theta)
-  proj = puck_persp_proj(vertices, x_p, y_p)  # Accounting for differences of the shot angle and goalie angle
 
-  # Projected bounding intervals
-  x_proj_min, x_proj_max = np.min(proj[:, 0]), np.max(proj[:, 0])
-  z_proj_min, z_proj_max = np.min(proj[:, 1]), np.max(proj[:, 1]) 
+  # 4. Project goalie polygon onto the goal plane and order its vertices
+  #    so the outline is well-defined.
+  vertices = vertices[[0, 1, 3, 2]]
+  proj = puck_persp_proj(vertices, x_p, y_p)
 
-  x_net_min, x_net_max = -W_NET / 2.0, W_NET / 2.0
-  z_net_min, z_net_max = 0.0, H_NET
+  # 5. Build the true goal-frame rectangle and the projected goalie polygon.
+  net_poly = box(-W_NET / 2.0, 0.0, W_NET / 2.0, H_NET)
+  goalie_poly = ShapelyPolygon(proj).convex_hull
 
-  # Compute exposed areas
-  x_covered = max(0.0, min(x_proj_max, x_net_max) - max(x_proj_min, x_net_min))
-  z_covered = max(0.0, min(z_proj_max, z_net_max) - max(z_proj_min, z_net_min))
+  # 6. Compute exact overlap (this avoids the bounding-box false positives).
+  intersection = net_poly.intersection(goalie_poly)
+  covered_area = float(intersection.area)
 
-  covered_area = x_covered * z_covered # Calculate the area of the net that is covered by the goalie
-  exposed_area = max(0.0, apparent_area - covered_area) # Calculate the area of the net that is exposed to the shot
+  exposed_area = max(0.0, apparent_area - covered_area)
   if apparent_area > 1e-6:
     occlusion_ratio = covered_area / apparent_area
   else:
     occlusion_ratio = 1.0
-  occlusion_ratio = float(np.clip(occlusion_ratio, 0.0, 1.0)) # Get the occlusion ratio, ensuring it is between 0 and 1
 
-  return exposed_area, covered_area, occlusion_ratio
+  occlusion_ratio = float(np.clip(occlusion_ratio, 0.0, 1.0))
+
+  return float(exposed_area), float(covered_area), float(occlusion_ratio)
 
 # ---------------------------------------
 # STOCHASTIC STUFF - STATIC MODEL
