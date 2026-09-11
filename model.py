@@ -362,18 +362,6 @@ def plot_release_cloud_exposure(
     sigma_y: float = SIGMA_Y_DEFAULT,
     n_samples: int = N_SAMPLES,
 ):
-  """
-  Scatter the sampled release neighbourhood around p0 and colour each point by
-  the perspective net exposure A_eff at that release coordinate.
-
-  This is a direct visual of the stochastic modelling assumption: the shot is
-  not a single point, but a cloud of plausible puck coordinates around the
-  nominal play spot.
-
-  Usage later in main.ipynb:
-      fig, ax = model.plot_release_cloud_exposure(p0=(0.0, 8.0))
-      plt.show()
-  """
 
   if samples is None:
     samples = sample_release_neighbourhood(
@@ -397,14 +385,19 @@ def plot_release_cloud_exposure(
   else:
     fig = ax.figure
 
+  max_val = np.max(exposed_values)
+  vmax = max_val if max_val > 1e-4 else 0.1
+
   scatter = ax.scatter(
       samples[:, 0],
       samples[:, 1],
       c=exposed_values,
-      cmap='plasma',
+      cmap='magma',
       s=12,
       alpha=0.75,
       edgecolors='none',
+      vmin=0.0,
+      vmax=vmax
   )
 
   ax.scatter([p0[0]], [p0[1]], color='black', marker='x', s=60, linewidths=2, zorder=3)
@@ -433,19 +426,6 @@ def plot_goal_plane_heatmap(
     sigma_y: float = SIGMA_Y_DEFAULT,
     n_samples: int = N_SAMPLES,
 ):
-  """
-  Render the goal face from the shooter's perspective and overlay the projected
-  goalie shadow.
-
-  The red rectangle shows the physical goal frame W x H, while the blue polygon
-  shows the part of that frame which is visually blocked by the goaltender at
-  depth d_g. The effect is the direct geometric interpretation of the model's
-  uncovered vs. covered net aperture.
-
-  Usage later in main.ipynb:
-      fig, ax = model.plot_goal_plane_heatmap(p0=(0.0, 8.0), d_g=0.6)
-      plt.show()
-  """
 
   if theta_set is None:
     theta_set, _ = get_geometry(p0[0], p0[1])
@@ -460,6 +440,7 @@ def plot_goal_plane_heatmap(
     d_g = solve_dg_static(p0, samples=samples)
 
   vertices = get_goalie_vertices(d_g, theta_set)
+  vertices = vertices[[0, 1, 3, 2]]
   projected = puck_persp_proj(vertices, p0[0], p0[1])
 
   if ax is None:
@@ -488,11 +469,20 @@ def plot_goal_plane_heatmap(
   )
   ax.add_patch(goalie_shadow)
 
+  x_min = min(-W_NET / 2.0, np.min(projected[:, 0]))
+  x_max = max(W_NET / 2.0, np.max(projected[:, 0]))
+  z_min = min(0.0, np.min(projected[:, 1]))
+  z_max = max(H_NET, np.max(projected[:, 1]))
+
+  padding = 0.15
+  xlims = (x_min - padding, x_max + padding)
+  ylims = (z_min - padding, z_max + padding)
+
   ax.set_title(f'Goal-plane view for $d_g={d_g:.2f}$ m')
   ax.set_xlabel('Goal width $x$ [m]')
   ax.set_ylabel('Goal height $z$ [m]')
-  ax.set_xlim(-W_NET / 2.0, W_NET / 2.0)
-  ax.set_ylim(0.0, H_NET)
+  ax.set_xlim(xlims)
+  ax.set_ylim(ylims)
   ax.set_aspect('equal')
   ax.grid(alpha=0.2)
 
