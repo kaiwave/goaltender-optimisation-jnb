@@ -185,12 +185,26 @@ def exposed_area_eff(
 
   # 1. Get the actual rotated 3D/2D stance vertices
   vertices = get_goalie_vertices(d_g, goalie_theta)
+  
+# 2. Forward distance along the normal to the green stance line
+  x_g = d_g * np.sin(goalie_theta)
+  y_g = d_g * np.cos(goalie_theta)
 
-  # 2. Find the rearmost edge of the goalie's stance along y
+  dist_forward = (x_p - x_g) * np.sin(goalie_theta) + (y_p - y_g) * np.cos(
+      goalie_theta
+  )
+
+  # 3. Denominator safety for y-projection: every goalie vertex must be in
+  # front of the puck along y before the perspective projection is valid.
   max_y_vertex = np.max(vertices[:, 1])
 
-  # 3. Guard: If puck is anywhere level with or behind ANY part of the goalie
-  if (y_p <= max_y_vertex + 0.05) or (np.hypot(x_p, y_p) <= d_g):
+  # If puck is behind the angled stance plane, inside crease,
+    # OR lower in y than the rearmost goalie vertex (preventing inverted rays):
+  if (
+      (dist_forward <= 0.05)
+      or (np.hypot(x_p, y_p) <= d_g)
+      or (y_p <= max_y_vertex + 0.05)
+  ):
     return float(apparent_area), 0.0, 0.0
 
   # 4. Project the true goalie outline and clip it to the goal rectangle.
