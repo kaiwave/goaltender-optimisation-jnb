@@ -4,8 +4,6 @@ from matplotlib.path import Path
 from matplotlib.patches import Polygon
 from scipy.optimize import minimize_scalar
 from typing import Tuple
-from shapely.geometry import Polygon as ShapelyPolygon
-from shapely.geometry import box
 
 # ---------------------------------------
 # CONSTANTS, CONSTRAINTS & PARAMETERS
@@ -97,6 +95,78 @@ def puck_persp_proj(
 
   return np.column_stack((x_proj, z_proj)) # Returns a 2D array of size (4, 2) with the projected coordinates
 
+def projected_goalie_path(
+    goalie_vertices: np.ndarray,
+    x_p: float,
+    y_p: float,
+) -> Path:
+  """Return the projected goalie outline as a closed goal-plane path."""
+  ordered_vertices = goalie_vertices[[0, 1, 3, 2]]
+  projected_vertices = puck_persp_proj(ordered_vertices, x_p, y_p)
+  path_vertices = np.vstack((projected_vertices, projected_vertices[0]))
+  path_codes = [Path.MOVETO, Path.LINETO, Path.LINETO, Path.LINETO, Path.CLOSEPOLY]
+  return Path(path_vertices, path_codes)
+
+def _clip_polygon_edge(
+    polygon: np.ndarray,
+    axis: int,
+    boundary: float,
+    keep_greater: bool,
+) -> np.ndarray:
+  """Clip a polygon against one side of an axis-aligned rectangle."""
+  if len(polygon) == 0:
+    return polygon
+
+  clipped = []
+  previous = polygon[-1]
+  previous_inside = (
+      previous[axis] >= boundary if keep_greater else previous[axis] <= boundary
+  )
+
+  for current in polygon:
+    current_inside = (
+        current[axis] >= boundary if keep_greater else current[axis] <= boundary
+    )
+    if current_inside != previous_inside:
+      denominator = current[axis] - previous[axis]
+      if abs(denominator) > 1e-12:
+        fraction = (boundary - previous[axis]) / denominator
+        clipped.append(previous + fraction * (current - previous))
+    if current_inside:
+      clipped.append(current)
+    previous = current
+    previous_inside = current_inside
+
+  return np.asarray(clipped, dtype=float)
+
+def _path_rectangle_intersection_area(
+    projected_path: Path,
+    x_min: float,
+    z_min: float,
+    x_max: float,
+    z_max: float,
+) -> tuple[float, np.ndarray]:
+  """Return the exact area and outline of a path clipped to a rectangle."""
+  polygon = projected_path.vertices[:-1] if projected_path.codes is not None else projected_path.vertices
+  polygon = np.asarray(polygon, dtype=float)
+
+  for axis, boundary, keep_greater in (
+      (0, x_min, True),
+      (0, x_max, False),
+      (1, z_min, True),
+      (1, z_max, False),
+  ):
+    polygon = _clip_polygon_edge(polygon, axis, boundary, keep_greater)
+
+  if len(polygon) < 3:
+    return 0.0, polygon
+
+  area = 0.5 * abs(
+      np.dot(polygon[:, 0], np.roll(polygon[:, 1], -1))
+      - np.dot(polygon[:, 1], np.roll(polygon[:, 0], -1))
+  )
+  return float(area), polygon
+
 def exposed_area_eff(
     x_p: float,
     y_p: float,
@@ -123,19 +193,17 @@ def exposed_area_eff(
   if (y_p <= max_y_vertex + 0.05) or (np.hypot(x_p, y_p) <= d_g):
     return float(apparent_area), 0.0, 0.0
 
-  # 4. Project goalie polygon onto the goal plane and order its vertices
-  #    so the outline is well-defined.
-  vertices = vertices[[0, 1, 3, 2]]
-  proj = puck_persp_proj(vertices, x_p, y_p)
+  # 4. Project the true goalie outline and clip it to the goal rectangle.
+  projected_path = projected_goalie_path(vertices, x_p, y_p)
+  covered_area, _ = _path_rectangle_intersection_area(
+      projected_path, -W_NET / 2.0, 0.0, W_NET / 2.0, H_NET
+  )
 
-  # 5. Build the true goal-frame rectangle and the projected goalie polygon.
-  net_poly = box(-W_NET / 2.0, 0.0, W_NET / 2.0, H_NET)
-  goalie_poly = ShapelyPolygon(proj).convex_hull
-
-  # 6. Compute exact overlap (this avoids the bounding-box false positives).
-  intersection = net_poly.intersection(goalie_poly)
-  covered_area = float(intersection.area)
-
+  # The path intersection is measured in physical goal-plane coordinates,
+  # while apparent_area is foreshortened by the shot angle. Convert the
+  # covered fraction before comparing the two area measures.
+  covered_fraction = np.clip(covered_area / (W_NET * H_NET), 0.0, 1.0)
+  covered_area = float(apparent_area * covered_fraction)
   exposed_area = max(0.0, apparent_area - covered_area)
   if apparent_area > 1e-6:
     occlusion_ratio = covered_area / apparent_area
@@ -440,8 +508,8 @@ def plot_goal_plane_heatmap(
     d_g = solve_dg_static(p0, samples=samples)
 
   vertices = get_goalie_vertices(d_g, theta_set)
-  vertices = vertices[[0, 1, 3, 2]]
-  projected = puck_persp_proj(vertices, p0[0], p0[1])
+  projected_path = projected_goalie_path(vertices, p0[0], p0[1])
+  projected = projected_path.vertices[:-1]
 
   if ax is None:
     fig, ax = plt.subplots(figsize=(8, 4.5))
