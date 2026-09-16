@@ -402,7 +402,7 @@ def plot_exposure_contour(
       Z[i, j] = exposed_area
 
   if ax is None:
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(8, 3.6))
   else:
     fig = ax.figure
 
@@ -493,6 +493,7 @@ def plot_goal_plane_heatmap(
     sigma_x: float = SIGMA_X_DEFAULT,
     sigma_y: float = SIGMA_Y_DEFAULT,
     n_samples: int = N_SAMPLES,
+    x_margin: float = 0.35
 ):
 
   if theta_set is None:
@@ -543,14 +544,12 @@ def plot_goal_plane_heatmap(
   z_max = max(H_NET, np.max(projected[:, 1]))
 
   padding = 0.15
-  xlims = (x_min - padding, x_max + padding)
-  ylims = (z_min - padding, z_max + padding)
+  ax.set_xlim(-W_NET / 2.0 - x_margin, W_NET / 2.0 + x_margin)
+  ax.set_ylim(-0.1, H_NET + 0.35)
 
   ax.set_title(f'Goal-plane view for $d_g={d_g:.2f}$ m')
   ax.set_xlabel('Goal width $x$ [m]')
   ax.set_ylabel('Goal height $z$ [m]')
-  ax.set_xlim(xlims)
-  ax.set_ylim(ylims)
   ax.set_aspect('equal')
   ax.grid(alpha=0.2)
 
