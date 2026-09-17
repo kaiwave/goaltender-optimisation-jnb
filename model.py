@@ -299,7 +299,6 @@ def calc_pass_recovery(
     p2: Tuple[float, float],
     d_g: float,
 ) -> Tuple[float, float, float, float]:
-
   # Calculate the time it takes for the puck to travel from p1 to p2
   dist_pass = float(np.linalg.norm(np.array(p2) - np.array(p1)))
   t_pass = float(dist_pass / V_PASS)
@@ -309,11 +308,12 @@ def calc_pass_recovery(
   theta_2 = get_geometry(p2[0], p2[1])[0]
   delta_theta = np.abs(theta_2 - theta_1)
 
-  delta_s_g = 2.0 * d_g * np.sin(delta_theta / 2.0)  # Arc length for the goalie to slide
+  # Chord length of the lateral crease slide
+  delta_s_g = 2.0 * d_g * np.sin(delta_theta / 2.0)
   t_slide = float(delta_s_g / V_SLIDE + T_REACT)
 
-  # Calculate the time difference between the pass and the goalie's recovery
-  delta_t = float(max(0.0, t_pass - t_slide))
+  # Positive delta_t means the goalie arrived LATE (delay deficit)
+  delta_t = float(t_slide - t_pass)
 
   return t_pass, t_slide, delta_t, dist_pass
 
@@ -579,18 +579,6 @@ def plot_recovery_window(
     d_grid: np.ndarray = None,
     ax=None,
 ):
-  """
-  Plot the pass duration and goalie recovery duration against crease depth.
-
-  This is the dynamic visual that clarifies the actual meaning of the recovery
-  model: the puck travel time is fixed by the pass geometry, while the goalie
-  recovery time grows linearly with the distance the goalie must slide. The
-  shaded region therefore shows where the goaltender cannot beat the pass.
-
-  Usage later in main.ipynb:
-      fig, ax = model.plot_recovery_window(p1=(-5.0, 7.0), p2_0=(5.0, 7.0))
-      plt.show()
-  """
 
   if d_grid is None:
     d_grid = np.linspace(0.0, R_CREASE, 80)
@@ -631,7 +619,6 @@ def plot_recovery_window(
 
   return fig, ax
 
-
 def plot_recovery_risk_curve(
     p1: Tuple[float, float],
     p2_0: Tuple[float, float],
@@ -643,18 +630,6 @@ def plot_recovery_risk_curve(
     sigma_y: float = SIGMA_Y_DEFAULT,
     n_samples: int = N_SAMPLES,
 ):
-  """
-  Plot the recovery-risk curve P_late(d_g) over the useful crease-depth range.
-
-  The curve shows the probability that the receiving shooter is exposed because
-  the goaltender cannot recover in time after the pass. The horizontal line is the
-  acceptable risk threshold, and the stopping depth d_g^* is the largest depth
-  where the risk remains within that tolerance.
-
-  Usage later in main.ipynb:
-      fig, ax = model.plot_recovery_risk_curve(p1=(-5.0, 7.0), p2_0=(5.0, 7.0))
-      plt.show()
-  """
 
   if samples is None:
     samples = sample_release_neighbourhood(
@@ -696,65 +671,6 @@ def plot_recovery_risk_curve(
 
   return fig, ax
 
-
-def plot_recovery_risk_contour(
-    p1: Tuple[float, float],
-    p2_0: Tuple[float, float],
-    d_grid: np.ndarray = None,
-    x_grid: np.ndarray = None,
-    sigma_x: float = SIGMA_X_DEFAULT,
-    sigma_y: float = SIGMA_Y_DEFAULT,
-    n_samples: int = N_SAMPLES,
-):
-  """
-  Legacy contour view of recovery risk over a 2D grid of receiving locations.
-
-  This is a broader survey visual than the 1D risk curve. It is useful when
-  you want to see how the late-recovery probability changes as the receiving
-  puck moves laterally and the goalie depth is adjusted.
-  """
-
-  if x_grid is None:
-    x_grid = np.linspace(p2_0[0] - 2.0, p2_0[0] + 2.0, 35)
-
-  if d_grid is None:
-    d_grid = np.linspace(0.0, R_CREASE, 35)
-
-  risk_surface = np.zeros((len(d_grid), len(x_grid)))
-
-  for i, x_pos in enumerate(x_grid):
-    samples = sample_release_neighbourhood(
-        (x_pos, p2_0[1]),
-        sigma_x=sigma_x,
-        sigma_y=sigma_y,
-        n_samples=n_samples,
-    )
-
-    for j, d_g in enumerate(d_grid):
-      risk_surface[j, i] = calc_recovery_risk(p1, (x_pos, p2_0[1]), d_g, samples=samples)
-
-  fig, ax = plt.subplots(figsize=(8, 5))
-  contour = ax.contourf(x_grid, d_grid, risk_surface, levels=50, cmap='magma')
-  fig.colorbar(contour, ax=ax, label='Recovery risk $P_{late}$')
-
-  ax.contour(
-      x_grid,
-      d_grid,
-      risk_surface,
-      levels=[RISK_THRESHOLD],
-      colors='white',
-      linewidths=1.5,
-      linestyles='--',
-  )
-
-  ax.set_title('Dynamic recovery-risk contour')
-  ax.set_xlabel('Receiving puck $x$-position [m]')
-  ax.set_ylabel('Goaltender depth $d_g$ [m]')
-  ax.grid(alpha=0.2)
-
-  return fig, ax
-
-
 def plot_zone_depth_surface(
     p1: Tuple[float, float],
     grid_x: np.ndarray = None,
@@ -764,24 +680,11 @@ def plot_zone_depth_surface(
     sigma_y: float = SIGMA_Y_DEFAULT,
     n_samples: int = N_SAMPLES,
 ):
-  """
-  Solve for the optimal depth d_g^* on a 2D mesh of candidate pass-receive
-  coordinates, and render the resulting top-down depth surface.
-
-  This is the zone-wide map that answers the coaching question 'where can the
-  goalie challenge aggressively, and where do they need to stay close to the
-  goal line?'
-
-  Usage later in main.ipynb:
-      fig, ax = model.plot_zone_depth_surface(p1=(-5.0, 7.0))
-      plt.show()
-  """
-
   if grid_x is None:
-    grid_x = np.linspace(-6.0, 6.0, 40)
+    grid_x = np.linspace(-10.0, 10.0, 50)
 
   if grid_y is None:
-    grid_y = np.linspace(0.0, 14.0, 40)
+    grid_y = np.linspace(0.0, 14.0, 30)
 
   X, Y = np.meshgrid(grid_x, grid_y)
   surface = np.zeros_like(X, dtype=float)
@@ -797,7 +700,7 @@ def plot_zone_depth_surface(
       surface[i, j] = solve_dg_dynamic(p1, (float(X[i, j]), float(Y[i, j])), samples=samples)
 
   if ax is None:
-    fig, ax = plt.subplots(figsize=(7, 6))
+    fig, ax = plt.subplots(figsize=(8.5, 5.1))
   else:
     fig = ax.figure
 
@@ -815,33 +718,3 @@ def plot_zone_depth_surface(
   fig.colorbar(image, ax=ax, label='Optimal depth $d_g^*$ [m]')
 
   return fig, ax
-
-
-def plot_zone_depth_heatmap(
-    p1: Tuple[float, float],
-    p2_0: Tuple[float, float],
-    x_extent: float = 4.0,
-    y_extent: float = 4.0,
-    resolution: int = 24,
-    sigma_x: float = SIGMA_X_DEFAULT,
-    sigma_y: float = SIGMA_Y_DEFAULT,
-    n_samples: int = N_SAMPLES,
-):
-  """
-  Backward-compatible wrapper around the zone-depth surface renderer.
-
-  This keeps the earlier API intact while making the underlying surface
-  interpretation more explicit.
-  """
-
-  x_grid = np.linspace(p2_0[0] - x_extent, p2_0[0] + x_extent, resolution)
-  y_grid = np.linspace(p2_0[1] - y_extent, p2_0[1] + y_extent, resolution)
-
-  return plot_zone_depth_surface(
-      p1,
-      grid_x=x_grid,
-      grid_y=y_grid,
-      sigma_x=sigma_x,
-      sigma_y=sigma_y,
-      n_samples=n_samples,
-  )
