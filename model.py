@@ -708,7 +708,7 @@ def plot_zone_depth_surface(
       surface,
       extent=[grid_x[0], grid_x[-1], grid_y[0], grid_y[-1]],
       origin='lower',
-      cmap='inferno',
+      cmap='magma',
       aspect='auto',
   )
 
