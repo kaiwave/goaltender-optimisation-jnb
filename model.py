@@ -387,13 +387,16 @@ def plot_exposure_contour(
     sigma_y: float = SIGMA_Y_DEFAULT,
     n_samples: int = N_SAMPLES,
 ):
+  # Plot the exposed area over the offensive zone for a goalie set to face p0
 
+  # Default grid covers the offensive zone out to the boards and the blue line
   if x_grid is None:
     x_grid = np.linspace(-10.0, 10.0, 80)
 
   if y_grid is None:
     y_grid = np.linspace(0.0, 14.0, 80)
 
+  # If no depth is given, solve for the static optimal d_g over the release neighbourhood
   if d_g is None:
     samples = sample_release_neighbourhood(
         p0,
@@ -403,11 +406,13 @@ def plot_exposure_contour(
     )
     d_g = solve_dg_static(p0, samples=samples)
 
+  # The goalie stance is fixed to the angle of p0, then every grid point is treated as a shot
   theta_set = np.arctan2(p0[0], p0[1])
 
   X, Y = np.meshgrid(x_grid, y_grid)
   Z = np.zeros_like(X, dtype=float)
 
+  # Calc the exposed area at every grid point
   for i in range(len(y_grid)):
     for j in range(len(x_grid)):
       exposed_area, _, _ = exposed_area_eff(
@@ -415,6 +420,7 @@ def plot_exposure_contour(
         )
       Z[i, j] = exposed_area
 
+  # Reuse the given axis if there is one (for dual panel figures), else make a new figure
   if ax is None:
     fig, ax = plt.subplots(figsize=(8, 3.6))
   else:
@@ -427,6 +433,7 @@ def plot_exposure_contour(
   # zone-wide surface.
   ax.scatter([p0[0]], [p0[1]], color='white', marker='x', s=60, linewidths=2, zorder=3)
 
+  # Title and axis labels
   ax.set_title(f'Static exposure surface for $d_g={d_g:.2f}$ m')
   ax.set_xlabel('Offensive-zone x-position $x_p$ [m]')
   ax.set_ylabel('Offensive-zone y-position $y_p$ [m]')
@@ -444,7 +451,9 @@ def plot_release_cloud_exposure(
     sigma_y: float = SIGMA_Y_DEFAULT,
     n_samples: int = N_SAMPLES,
 ):
+  # Plot the release neighbourhood on the ice, coloured by the exposed area of each sample
 
+  # Sample the release points if they are not passed in
   if samples is None:
     samples = sample_release_neighbourhood(
         p0,
@@ -453,20 +462,24 @@ def plot_release_cloud_exposure(
         n_samples=n_samples,
     )
 
+  # If no depth is given, solve for the static optimal d_g over the same samples
   if d_g is None:
     d_g = solve_dg_static(p0, samples=samples)
 
+  # Calc the exposed area for each release point
   exposed_values = []
   for sample in samples:
     x_p, y_p = sample
     exposed_area, _, _ = exposed_area_eff(x_p, y_p, d_g)
     exposed_values.append(exposed_area)
 
+  # Reuse the given axis if there is one (for dual panel figures), else make a new figure
   if ax is None:
     fig, ax = plt.subplots(figsize=(7, 6))
   else:
     fig = ax.figure
 
+  # Colour scale tops out at the largest exposure, with a floor so an all-zero cloud still renders
   max_val = np.max(exposed_values)
   vmax = max_val if max_val > 1e-4 else 0.1
 
@@ -482,10 +495,12 @@ def plot_release_cloud_exposure(
       vmax=vmax
   )
 
+  # Mark the nominal release point and zoom the view to the cloud
   ax.scatter([p0[0]], [p0[1]], color='black', marker='x', s=60, linewidths=2, zorder=3)
   ax.set_xlim(p0[0] - 1.5, p0[0] + 1.5)
   ax.set_ylim(p0[1] - 1.5, p0[1] + 1.5)
 
+  # Title shows the expected exposed area, which is the static objective function
   ax.set_title(
       f'Release cloud exposure for $d_g={d_g:.2f}$ m\n'
       f'Expected exposed area = {np.mean(exposed_values):.3f} m$^2$'
@@ -509,10 +524,13 @@ def plot_goal_plane_heatmap(
     n_samples: int = N_SAMPLES,
     x_margin: float = 0.35
 ):
+  # Plot the goalie silhouette projected onto the goal plane, as seen from p0
 
+  # Default to the goalie facing p0 directly
   if theta_set is None:
     theta_set, _ = get_geometry(p0[0], p0[1])
 
+  # If no depth is given, solve for the static optimal d_g over the release neighbourhood
   if d_g is None:
     samples = sample_release_neighbourhood(
         p0,
@@ -522,15 +540,18 @@ def plot_goal_plane_heatmap(
     )
     d_g = solve_dg_static(p0, samples=samples)
 
+  # Project the goalie outline onto the goal plane (drop the closing vertex)
   vertices = get_goalie_vertices(d_g, theta_set)
   projected_path = projected_goalie_path(vertices, p0[0], p0[1])
   projected = projected_path.vertices[:-1]
 
+  # Reuse the given axis if there is one (for dual panel figures), else make a new figure
   if ax is None:
     fig, ax = plt.subplots(figsize=(8, 4.5))
   else:
     fig = ax.figure
 
+  # Red outline is the physical net, centred on x = 0
   goal_frame = plt.Rectangle(
       (-W_NET / 2.0, 0.0),
       W_NET,
@@ -542,6 +563,7 @@ def plot_goal_plane_heatmap(
   )
   ax.add_patch(goal_frame)
 
+  # Blue polygon is the goalie silhouette, so any net not covered by it is exposed
   goalie_shadow = Polygon(
       projected,
       closed=True,
@@ -552,12 +574,7 @@ def plot_goal_plane_heatmap(
   )
   ax.add_patch(goalie_shadow)
 
-  x_min = min(-W_NET / 2.0, np.min(projected[:, 0]))
-  x_max = max(W_NET / 2.0, np.max(projected[:, 0]))
-  z_min = min(0.0, np.min(projected[:, 1]))
-  z_max = max(H_NET, np.max(projected[:, 1]))
-
-  padding = 0.15
+  # The view is fixed to the net plus a margin, so shadows are compared on the same scale
   ax.set_xlim(-W_NET / 2.0 - x_margin, W_NET / 2.0 + x_margin)
   ax.set_ylim(-0.1, H_NET + 0.35)
 
@@ -579,13 +596,17 @@ def plot_recovery_window(
     d_grid: np.ndarray = None,
     ax=None,
 ):
+  # Plot the pass transit time against the goalie recovery time across crease depths
 
+  # Default depths span the whole crease
   if d_grid is None:
     d_grid = np.linspace(0.0, R_CREASE, 80)
 
+  # Calc the shot angle at the passer and at the receiver
   theta_1, _ = get_geometry(p1[0], p1[1])
   theta_2, _ = get_geometry(p2_0[0], p2_0[1])
 
+  # Calc the time it takes for the puck to travel from p1 to p2
   dist_pass = float(np.linalg.norm(np.array(p2_0) - np.array(p1)))
   t_pass = dist_pass / V_PASS
 
@@ -593,14 +614,17 @@ def plot_recovery_window(
   t_goalie = T_REACT + (2.0 * d_grid * np.sin(np.abs(theta_2 - theta_1) / 2.0)) / V_SLIDE
   delta_t = np.maximum(0.0, t_goalie - t_pass)
 
+  # Reuse the given axis if there is one (for dual panel figures), else make a new figure
   if ax is None:
     fig, ax = plt.subplots(figsize=(8, 5))
   else:
     fig = ax.figure
 
+  # Pass time is constant in d_g (horizontal), recovery time rises with d_g
   ax.axhline(t_pass, color='tab:blue', linewidth=2, label='Pass transit time $t_{pass}$')
   ax.plot(d_grid, t_goalie, color='tab:orange', linewidth=2, label='Recovery time $t_{goalie}(d_g)$')
 
+  # Shade the depths where the goalie arrives after the puck
   ax.fill_between(
       d_grid,
       t_pass,
@@ -608,7 +632,7 @@ def plot_recovery_window(
       where=t_goalie > t_pass,
       color='tab:red',
       alpha=0.25,
-      label='Late recovery region ($\delta t > 0$)',
+      label=r'Late recovery region ($\delta t > 0$)',
   )
 
   ax.set_title(f'Recovery window for pass from $p_1$ to $p_2$')
@@ -630,7 +654,9 @@ def plot_recovery_risk_curve(
     sigma_y: float = SIGMA_Y_DEFAULT,
     n_samples: int = N_SAMPLES,
 ):
+  # Plot the late recovery probability across crease depths, and mark the optimal depth
 
+  # Sample the reception points around p2_0 if they are not passed in
   if samples is None:
     samples = sample_release_neighbourhood(
         p2_0,
@@ -639,20 +665,25 @@ def plot_recovery_risk_curve(
         n_samples=n_samples,
     )
 
+  # Default depths span the whole crease
   if d_grid is None:
     d_grid = np.linspace(0.0, R_CREASE, 80)
 
+  # Calc the risk at every depth, and the deepest depth that stays under the threshold
   risks = [calc_recovery_risk(p1, p2_0, d_g, samples=samples) for d_g in d_grid]
   d_star = solve_dg_dynamic(p1, p2_0, samples=samples)
 
+  # Reuse the given axis if there is one (for dual panel figures), else make a new figure
   if ax is None:
     fig, ax = plt.subplots(figsize=(8, 5))
   else:
     fig = ax.figure
 
+  # Risk curve with the acceptable risk threshold as a dashed line
   ax.plot(d_grid, risks, color='tab:purple', linewidth=2, label='Late recovery probability $P_{late}(d_g)$')
   ax.axhline(risk_threshold, color='black', linestyle='--', linewidth=1.5, label=f'Risk threshold = {risk_threshold:.2f}')
 
+  # Mark the optimal dynamic depth d_g* on the curve
   ax.scatter(
       [d_star],
       [calc_recovery_risk(p1, p2_0, d_star, samples=samples)],
@@ -680,6 +711,9 @@ def plot_zone_depth_surface(
     sigma_y: float = SIGMA_Y_DEFAULT,
     n_samples: int = N_SAMPLES,
 ):
+  # Plot the optimal dynamic depth d_g* for every candidate reception point, given a passer at p1
+
+  # Default grid is coarser than the static contours since each cell runs a full bisection solve
   if grid_x is None:
     grid_x = np.linspace(-10.0, 10.0, 50)
 
@@ -689,6 +723,7 @@ def plot_zone_depth_surface(
   X, Y = np.meshgrid(grid_x, grid_y)
   surface = np.zeros_like(X, dtype=float)
 
+  # Solve for d_g* at every grid point, resampling the reception neighbourhood for each one
   for i in range(len(grid_y)):
     for j in range(len(grid_x)):
       samples = sample_release_neighbourhood(
@@ -699,11 +734,13 @@ def plot_zone_depth_surface(
       )
       surface[i, j] = solve_dg_dynamic(p1, (float(X[i, j]), float(Y[i, j])), samples=samples)
 
+  # Reuse the given axis if there is one (for dual panel figures), else make a new figure
   if ax is None:
     fig, ax = plt.subplots(figsize=(8.5, 5.1))
   else:
     fig = ax.figure
 
+  # Dead-zones (d_g* = 0) show up as the darkest regions
   image = ax.imshow(
       surface,
       extent=[grid_x[0], grid_x[-1], grid_y[0], grid_y[-1]],
