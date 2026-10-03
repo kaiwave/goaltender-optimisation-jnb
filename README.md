@@ -4,7 +4,7 @@ A 3D projective geometry model of ice hockey goaltender positioning. It quantifi
 
 The report, the analysis and the figures all live in a single Jupyter notebook (`main.ipynb`), backed by a plain Python module (`model.py`). Figures are drawn with matplotlib.
 
-> **Status:** Complete. The entire report has been written up and published on [cloud.kaiwave.dev](https://cloud.kaiwave.dev/s/soEgMwqb2sbCaD2) - with a card on [kaiwave.dev/projects](https://kaiwave.dev/projects/). 
+> **Status:** Complete. The entire report has been written up and published on [cloud.kaiwave.dev](https://cloud.kaiwave.dev/s/6jcMDzegMr3J5SM) - with a card on [kaiwave.dev/projects](https://kaiwave.dev/projects/). 
 
 ## The idea
 
